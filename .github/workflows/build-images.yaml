@@ -1,0 +1,43 @@
+name: Build & publish nerc-bootstrap images
+on:
+  release:
+    types: [ published ]
+    tags: [ 'v*.*.*' ]
+  pull_request:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/build.yaml"
+      - "containers/**"
+
+
+jobs:
+  build-base:
+    uses: nerc-project/nerc-github-workflows/.github/workflows/build-image.yaml@main
+    with:
+      image: ghcr.io/nerc-project/nerc-bootstrap/base
+      context: ./containers/base
+      container_file: Containerfile
+    secrets: inherit
+  build-dhcpd:
+    needs: build-base
+    uses: nerc-project/nerc-github-workflows/.github/workflows/build-image.yaml@main
+    with:
+      image: ghcr.io/nerc-project/nerc-bootstrap/dhcpd
+      context: ./containers/dhcpd
+      container_file: Containerfile
+    secrets: inherit
+  build-tftpd:
+    needs: build-base
+    uses: nerc-project/nerc-github-workflows/.github/workflows/build-image.yaml@main
+    with:
+      image: ghcr.io/nerc-project/nerc-bootstrap/tftpd
+      context: ./containers/tftpd
+      container_file: Containerfile
+    secrets: inherit
+  build-httpd:
+    uses: nerc-project/nerc-github-workflows/.github/workflows/build-image.yaml@main
+    with:
+      image: ghcr.io/nerc-project/nerc-bootstrap/httpd
+      context: ./containers/httpd
+      container_file: Containerfile
+    secrets: inherit
