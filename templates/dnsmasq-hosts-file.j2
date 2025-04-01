@@ -1,0 +1,10 @@
+{% macro static_dnsmasq_entry(static) -%}
+{% for ip in static.ips -%}
+{{ item.value.get('mac') }},{{ ip }},{{ static.hostname }}{% if static.get('timeout') %},{{ static.timeout }}{% endif %}{{''}}
+{% endfor -%}
+{%- endmacro %}
+{% if item.value.get('static') -%}
+{{ static_dnsmasq_entry(item.value.get('static')) }}
+{% else -%}
+{{ item.value.get('mac') }}
+{%- endif %}
