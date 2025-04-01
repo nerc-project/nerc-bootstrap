@@ -1,0 +1,160 @@
+---
+- name: Create data directories (private)
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0770"
+  loop:
+    - "{{ bootstrap_data_root }}/dhcpd/etc"
+    - "{{ bootstrap_data_root }}/dhcpd/hosts"
+    - "{{ bootstrap_data_root }}/dhcpd/lib"
+    - "{{ bootstrap_data_root }}/logs/dhcpd"
+    - "{{ bootstrap_data_root }}/logs/tftpd"
+    - "{{ bootstrap_data_root }}/logs/httpd"
+
+- name: Create data directories (public)
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0775"
+  loop:
+    - "{{ bootstrap_data_root }}/tftpd"
+    - "{{ bootstrap_data_root }}/httpd"
+    - "{{ bootstrap_data_root }}/httpd/ipxe-configs"
+    - "{{ bootstrap_data_root }}/httpd/kickstarts"
+
+- name: Configure logrotate for bootstrap container logs
+  ansible.builtin.template:
+    src: logrotate-bootstrap.j2
+    dest: "/etc/logrotate.d/bootstrap"
+    mode: "0644"
+
+- name: Generating dnsmasq.conf
+  ansible.builtin.template:
+    src: dnsmasq.conf.j2
+    dest: "{{ bootstrap_data_root }}/dhcpd/etc/dnsmasq.conf"
+    mode: "0770"
+  register: dnsmasq_conf
+
+- name: Configure dnsmasq hosts directory
+  ansible.builtin.template:
+    src: dnsmasq-hosts-file.j2
+    dest: "{{ bootstrap_data_root }}/dhcpd/hosts/{{ item.value.get('mac') }}"
+    mode: "0770"
+  loop: "{{ bootstrap_hosts | dict2items }}"
+
+- name: Setup dnsmasq unknown hosts filter
+  ansible.builtin.copy:
+    content: "*:*:*:*:*:*,ignore"
+    dest: "{{ bootstrap_data_root }}/dhcpd/hosts/unknown_hosts_filter"
+    mode: "0770"
+
+- name: Setup IPXE chain config
+  ansible.builtin.template:
+    src: ipxe-configs/chain.ipxe.j2
+    dest: "{{ bootstrap_data_root }}/httpd/ipxe-configs/chain.ipxe"
+    mode: "0775"
+
+- name: Render IPXE configs
+  ansible.builtin.template:
+    src: ipxe-configs/{{ item.value.get('image') }}.j2
+    dest: "{{ bootstrap_data_root }}/httpd/ipxe-configs/{{ item.value.get('mac') }}"
+    mode: "0775"
+  loop: "{{ bootstrap_hosts | dict2items }}"
+
+#- name: Render kickstarts
+#  ansible.builtin.template:
+#    src: kickstarts/{{ item.value.get('kickstart') }}.ks.j2
+#    dest: "{{ bootstrap_data_root }}/httpd/kickstarts/{{ item.key }}"
+#    mode: "0775"
+#  when: item.value.get('kickstart')
+#  loop: "{{ bootstrap_hosts | dict2items }}"
+
+- name: Setup DHCPD service
+  containers.podman.podman_container:
+    name: dhcpd
+    image: "{{ bootstrap_dhcpd_image }}"
+    state: started
+    user: root
+    ports:
+      - 67:67/udp
+    privileged: true
+    generate_systemd:
+      new: true
+      names: true
+      path: /etc/systemd/system
+      restart_policy: always
+    restart: "{{ dnsmasq_conf.changed | default(false) }}"
+    security_opt:
+      - label=disable
+    log_driver: "k8s-file"
+    log_opt:
+      path: "{{ bootstrap_data_root }}/logs/dhcpd/dnsmasq.log"
+    volumes:
+      - "{{ bootstrap_data_root }}/dhcpd/etc/dnsmasq.conf:/etc/dnsmasq.conf"
+      - "{{ bootstrap_data_root }}/dhcpd/lib:/var/lib/dnsmasq"
+      - "{{ bootstrap_data_root }}/dhcpd/hosts:/var/lib/dnsmasq/dhcp-hostsdir"
+    command: >-
+      /sbin/dnsmasq
+      -k
+      --conf-file=/etc/dnsmasq.conf
+      --log-queries
+      --log-facility=-
+      --dhcp-authoritative
+
+- name: Setup tftp for PXE server
+  containers.podman.podman_container:
+    name: tftpd
+    state: started
+    image: "{{ bootstrap_tftp_image }}"
+    ports:
+      - 69:69/udp
+    generate_systemd:
+      new: true
+      names: true
+      path: /etc/systemd/system
+      restart_policy: always
+    security_opt:
+      - label=disable
+    log_driver: "k8s-file"
+    log_opt:
+      path: "{{ bootstrap_data_root }}/logs/tftpd/tftpd.log"
+    volumes:
+      - "{{ bootstrap_data_root }}/tftpd:/var/lib/tftpboot"
+
+- name: Setup httpd for PXE server (for large images)
+  containers.podman.podman_container:
+    name: httpd
+    image: "{{ bootstrap_httpd_image }}"
+    command: /usr/local/apache2/bin/httpd -DFOREGROUND
+    state: started
+    ports:
+      - 80:80/tcp
+    generate_systemd:
+      new: true
+      names: true
+      path: /etc/systemd/system
+      restart_policy: always
+    security_opt:
+      - label=disable
+    log_driver: "k8s-file"
+    log_opt:
+      path: "{{ bootstrap_data_root }}/logs/httpd/stdout.log"
+    volumes:
+      - "{{ bootstrap_data_root }}/httpd:/usr/local/apache2/htdocs"
+      - "{{ bootstrap_data_root }}/logs/httpd:/var/log/httpd"
+
+- name: Enable podman container systemd services
+  ansible.builtin.systemd:
+    daemon_reload: true
+    enabled: true
+    state: started
+    name: "container-{{ item }}.service"
+  loop:
+    - dhcpd
+    - httpd
+    - tftpd

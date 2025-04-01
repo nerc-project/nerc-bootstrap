@@ -1,0 +1,13 @@
+---
+bootstrap_data_root: /srv
+bootstrap_tftp_image: ghcr.io/nerc-project/nerc-bootstrap/tftpd:latest
+bootstrap_dhcpd_image: ghcr.io/nerc-project/nerc-bootstrap/dhcpd:latest
+bootstrap_httpd_image: ghcr.io/nerc-project/nerc-bootstrap/httpd:latest
+bootstrap_dns_servers:
+  - 8.8.8.8 # dns.google
+  - 8.8.4.4 # dns.google
+bootstrap_ntp_servers:
+  - 216.239.35.0 # time.google.com
+  - 216.239.35.12 # time.google.com
+  - 216.239.35.4 # time.google.com
+  - 216.239.35.8 # time.google.com
