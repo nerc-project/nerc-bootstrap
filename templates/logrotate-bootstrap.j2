@@ -1,0 +1,12 @@
+{{ bootstrap_data_root }}/logs/dhcpd/*.log
+{{ bootstrap_data_root }}/logs/httpd/*.log
+{{ bootstrap_data_root }}/logs/tftpd/*.log
+{
+    maxsize 50M
+    missingok
+    rotate 7
+    compress
+    notifempty
+    nocreate
+    copytruncate
+}
