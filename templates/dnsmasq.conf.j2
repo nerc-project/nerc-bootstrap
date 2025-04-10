@@ -1,0 +1,40 @@
+port=0
+user=root
+
+{% for dhcp_range in bootstrap_dhcp_ranges -%}
+dhcp-range=set:{{ dhcp_range.tag }},{{ dhcp_range.start }},{{ dhcp_range.end }},{{ dhcp_range.netmask }},{{ dhcp_range.timeout }}
+{% if dhcp_range.get('disable_default_router', False) -%}
+dhcp-option=tag:{{ dhcp_range.tag }},3
+{% else -%}
+dhcp-option=tag:{{ dhcp_range.tag }},option:router,{{ dhcp_range.gateway }}
+{% endif -%}
+{% if dhcp_range.get('disable_dns', False) -%}
+dhcp-option=tag:{{ dhcp_range.tag }},6
+{% endif -%}
+dhcp-option-force=tag:{{ dhcp_range.tag }},option:mtu,{{ dhcp_range.mtu }}
+{% if dhcp_range.get('static_routes', False) -%}
+dhcp-option=tag:{{ dhcp_range.tag }},option:classless-static-route,{{ dhcp_range.static_routes | join(',') }}
+{% endif -%}
+{% endfor -%}
+dhcp-sequential-ip
+dhcp-match=ipxe,175
+dhcp-match=set:efi,option:client-arch,7
+dhcp-match=set:efi,option:client-arch,9
+dhcp-match=set:efi,option:client-arch,11
+# dhcpv6s for Client System Architecture Type (61)
+dhcp-match=set:efi6,option6:61,0007
+dhcp-match=set:efi6,option6:61,0009
+dhcp-match=set:efi6,option6:61,0011
+dhcp-userclass=set:ipxe6,iPXE
+# Client is already running iPXE; move to next stage of chainloading
+dhcp-boot=tag:ipxe,http://{{ bootstrap_ip }}/ipxe-configs/chain.ipxe
+dhcp-option=tag:ipxe6,option6:bootfile-url,http://{{ bootstrap_ip }}/ipxe-configs/chain.ipxe
+# Client is PXE booting over EFI without iPXE ROM; send EFI version of iPXE chainloader
+dhcp-boot=tag:efi,tag:!ipxe,ipxe.efi,localhost.localdomain,{{ bootstrap_ip }}
+dhcp-option=tag:efi6,tag:!ipxe6,option6:bootfile-url,tftp://{{ bootstrap_ip }}/ipxe.efi
+# Client is running PXE over BIOS; send BIOS version of iPXE chainloader
+dhcp-boot=undionly.kpxe,localhost.localdomain,{{ bootstrap_ip }}
+dhcp-option=option:dns-server,{{ bootstrap_dns_servers | join(',') }}
+dhcp-option=option:ntp-server,{{ bootstrap_ntp_servers | join(',') }}
+
+dhcp-hostsdir=/var/lib/dnsmasq/dhcp-hostsdir

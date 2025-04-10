@@ -1,0 +1,7 @@
+#!ipxe
+
+:retry_boot
+imgfree
+kernel --timeout 60000 http://{{ bootstrap_ip }}/rhel9/vmlinuz initrd=initramfs inst.repo=http://{{ bootstrap_ip }}/rhel9/repo BOOTIF={{ item.value.get('mac') }} inst.lang= rd.net.dhcp.retry=10 text rd.emergency=reboot inst.ks=http://{{ bootstrap_ip }}/kickstarts/{{ item.key }} || goto retry_boot
+initrd --timeout 60000 --name initramfs http://{{ bootstrap_ip }}/rhel9/initrd.img || goto retry_boot
+boot
